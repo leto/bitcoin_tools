@@ -1,9 +1,13 @@
 from bitcoin_tools import CFG
+from binascii import hexlify, unhexlify
 from bitcoin_tools.analysis.status import FEE_STEP
-from bitcoin_tools.analysis.status.utils import check_multisig, get_min_input_size, roundup_rate, check_multisig_type
+from bitcoin_tools.analysis.status.utils import check_multisig, get_min_input_size, roundup_rate, check_multisig_type, txout_decompress
 import ujson
 from subprocess import call
 from os import remove
+import base58
+import secp256k1
+import hashlib
 
 
 def transaction_dump(fin_name, fout_name, version=0.15):
@@ -126,6 +130,49 @@ def utxo_dump(fin_name, fout_name, version=0.15, count_p2sh=False, non_std_only=
                           "non_profitable": np,
                           "non_std_type": non_std_type}
 
+                amt = out["amount"]
+                amount =  "%d.%08d" %  (amt / 100000000 , amt % 100000000 )
+                utxo_data_len = len(out["data"]) / 2
+
+                outdata = out["data"]
+                script  = unhexlify(outdata)
+                if out["out_type"] == 0:
+                    # P2PKH
+                    num_bytes  = script[2]
+                    public_key = script[3:23]
+                    z          = b'\00'+public_key
+                    z          = base58.b58encode_check(z)
+                    print("p2pkh,{},{},{}".format(amount, z, hexlify(script)))
+                if out["out_type"] == 1:
+                    # P2SH
+                    num_bytes  = script[1]
+                    public_key = script[2:22]
+                    z          = b'\05'+public_key
+                    z          = base58.b58encode_check(z)
+                    print("p2sh,{},{},{}".format(amount, z, hexlify(script)))
+                elif( outdata[0:1] == b'5') and outdata[-2:] == b'ae':
+                    #public_key = script[2:22]
+                    #z          = b'\00'+public_key
+                    #z          = base58.b58encode_check(z)
+                    #print("multisig,{},{},{}".format(amount, z, hexlify(script)))
+                    print("multisig,{},,{}".format(amount, hexlify(script)))
+                elif outdata[-2:] == b'ac' and (outdata[0:2] == b'41' or outdata[0:2] == b'21'):
+                    #print len(data), len(script)
+                    # P2PK
+                    if outdata[0:2] == b'41':
+                        offset = 65
+                    elif outdata[0:2] == b'21':
+                        offset  = 33
+
+                    pubkey = script[1:1+offset]
+                    pubkeyhash = ripemd160(sha256(pubkey).digest())
+
+                    z          = '\00'+pubkeyhash
+                    z          = base58.b58encode_check(z)
+                    print("p2pk,{},{},{}".format(amount, z, hexlify(script)))
+                else:
+                    print("unkown,{},,{},{},{}".format( amount, hexlify(script), utxo_data_len, out["out_type"]))
+
                 # Index added at the end when updated the result with the out, since the index is not part of the
                 # encoded data anymore (coin) but of the entry identifier (outpoint), we add it manually.
                 if version >= 0.15:
@@ -138,3 +185,8 @@ def utxo_dump(fin_name, fout_name, version=0.15, count_p2sh=False, non_std_only=
 
     fin.close()
     fout.close()
+
+def ripemd160(st):
+    r = hashlib.new('ripemd160')
+    r.update(st)
+    return r.digest()
