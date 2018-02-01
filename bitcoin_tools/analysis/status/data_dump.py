@@ -1,7 +1,7 @@
 from bitcoin_tools import CFG
 from binascii import hexlify, unhexlify
 from bitcoin_tools.analysis.status import FEE_STEP
-from bitcoin_tools.analysis.status.utils import check_multisig, get_min_input_size, roundup_rate, check_multisig_type, txout_decompress
+from bitcoin_tools.analysis.status.utils import check_multisig, get_min_input_size, roundup_rate, check_multisig_type, txout_decompress, decompress_script
 import ujson
 from subprocess import call
 from os import remove
@@ -136,6 +136,11 @@ def utxo_dump(fin_name, fout_name, version=0.15, count_p2sh=False, non_std_only=
 
                 outdata = out["data"]
                 script  = unhexlify(outdata)
+
+		dec_script = decompress_script(out["out_type"], outdata)
+		print dec_script
+
+
                 if out["out_type"] == 0:
                     # P2PKH
                     num_bytes  = script[2]
@@ -173,6 +178,9 @@ def utxo_dump(fin_name, fout_name, version=0.15, count_p2sh=False, non_std_only=
                 else:
                     print("unkown,{},,{},{},{}".format( amount, hexlify(script), utxo_data_len, out["out_type"]))
 
+		# TEMP
+		exit()
+
                 # Index added at the end when updated the result with the out, since the index is not part of the
                 # encoded data anymore (coin) but of the entry identifier (outpoint), we add it manually.
                 if version >= 0.15:
@@ -190,3 +198,53 @@ def ripemd160(st):
     r = hashlib.new('ripemd160')
     r.update(st)
     return r.digest()
+
+OP_DUP = chr(0x76)
+OP_HASH160 = chr(0xa9)
+OP_EQUALVERIFY = chr(0x88)
+OP_CHECKSIG = chr(0xac)
+OP_EQUAL = chr(0x87)
+
+def decompress_script(script_type,script_bytes):
+    """ Takes CScript as stored in leveldb and returns it in uncompressed form
+    (de)compression scheme is defined in bitcoin/src/compressor.cpp
+
+    :param script_type: first byte of script data (out_type in decode_utxo)
+    :type script_type: int
+    :param script_bytes: raw script bytes hexlified (data in decode_utxo)
+    :type script_bytes: str
+    :return: the decompressed CScript
+    :rtype: str
+    """
+
+    data = unhexlify(script_bytes)
+    if script_type == 0:
+        assert len(data) == 20
+        data = OP_DUP + OP_HASH160 + chr(20) + data + \
+            OP_EQUALVERIFY + OP_CHECKSIG
+
+    elif script_type == 1:
+        assert len(data) == 20
+        data = OP_HASH160 + chr(20) + data + OP_EQUAL
+
+    elif script_type == 2 or script_type == 3:
+        data = data[1:]
+        assert len(data) == 32
+        data = chr(33) + script_type + data + OP_CHECKSIG
+
+    elif script_type == 4 or script_type == 5:
+        data = data[1:]
+        assert len(data) == 32
+
+        comp_pubkey = chr(script_type - 2) + data
+        pubkey = secp256k1.PublicKey(
+            comp_pubkey, raw=True).serialize(compressed=False)
+
+        data = chr(65) + pubkey + OP_CHECKSIG
+
+    else:
+        assert len(data) == script_type - 6
+        data = hexlify(data)
+
+    return hexlify(data)
+
