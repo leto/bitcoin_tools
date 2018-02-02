@@ -135,32 +135,40 @@ def utxo_dump(fin_name, fout_name, version=0.15, count_p2sh=False, non_std_only=
                 utxo_data_len = len(out["data"]) / 2
 
                 outdata = out["data"]
-                script  = unhexlify(outdata)
 
 		dec_script = decompress_script(out["out_type"], outdata)
-		print dec_script
+		#print dec_script
 
-
+		#script = unhexlify(dec_script)
+		script = dec_script
                 if out["out_type"] == 0:
                     # P2PKH
-                    num_bytes  = script[2]
-                    public_key = script[3:23]
+                    num_bytes  = dec_script[4:6]
+                    public_key = dec_script[6:6+20]
                     z          = b'\00'+public_key
                     z          = base58.b58encode_check(z)
-                    print("p2pkh,{},{},{}".format(amount, z, hexlify(script)))
-                if out["out_type"] == 1:
+                    #print("p2pkh,{},{},{}".format(amount, z, hexlify(script)))
+                    #print("p2pkh,{},{},{}".format(amount, z, dec_script))
+                    print("p2pkh,{},{},{}".format(amount, '' , dec_script))
+		    #print "num_bytes=" + str(num_bytes)
+                    #print "script=" + str(script)
+	            #print "pk=" + str(public_key)
+		    #exit()
+
+                elif out["out_type"] == 1:
                     # P2SH
                     num_bytes  = script[1]
                     public_key = script[2:22]
                     z          = b'\05'+public_key
                     z          = base58.b58encode_check(z)
-                    print("p2sh,{},{},{}".format(amount, z, hexlify(script)))
-                elif( outdata[0:1] == b'5') and outdata[-2:] == b'ae':
+                    #print("p2sh,{},{},{}".format(amount, z, hexlify(script)))
+                    print("p2sh,{},{},{}".format(amount, z, dec_script))
+                elif ( outdata[0:1] == b'5') and outdata[-2:] == b'ae':
                     #public_key = script[2:22]
                     #z          = b'\00'+public_key
                     #z          = base58.b58encode_check(z)
                     #print("multisig,{},{},{}".format(amount, z, hexlify(script)))
-                    print("multisig,{},,{}".format(amount, hexlify(script)))
+                    print("multisig,{},,{}".format(amount, dec_script))
                 elif outdata[-2:] == b'ac' and (outdata[0:2] == b'41' or outdata[0:2] == b'21'):
                     #print len(data), len(script)
                     # P2PK
@@ -169,17 +177,18 @@ def utxo_dump(fin_name, fout_name, version=0.15, count_p2sh=False, non_std_only=
                     elif outdata[0:2] == b'21':
                         offset  = 33
 
-                    pubkey = script[1:1+offset]
-                    pubkeyhash = ripemd160(sha256(pubkey).digest())
+                    #pubkey = script[1:1+offset]
+                    #pubkeyhash = ripemd160(sha256(pubkey).digest())
 
-                    z          = '\00'+pubkeyhash
-                    z          = base58.b58encode_check(z)
-                    print("p2pk,{},{},{}".format(amount, z, hexlify(script)))
+                    #z          = '\00'+pubkeyhash
+                    #z          = base58.b58encode_check(z)
+                    #print("p2pk,{},{},{}".format(amount, z, hexlify(script)))
+                    print("p2pk,{},{},{}".format(amount, '', dec_script)
                 else:
-                    print("unkown,{},,{},{},{}".format( amount, hexlify(script), utxo_data_len, out["out_type"]))
+                    print("unkown,{},,{},{},{}".format( amount, dec_script))
 
 		# TEMP
-		exit()
+		#exit()
 
                 # Index added at the end when updated the result with the out, since the index is not part of the
                 # encoded data anymore (coin) but of the entry identifier (outpoint), we add it manually.
@@ -217,6 +226,7 @@ def decompress_script(script_type,script_bytes):
     :rtype: str
     """
 
+    #print script_type
     data = unhexlify(script_bytes)
     if script_type == 0:
         assert len(data) == 20
@@ -230,7 +240,8 @@ def decompress_script(script_type,script_bytes):
     elif script_type == 2 or script_type == 3:
         data = data[1:]
         assert len(data) == 32
-        data = chr(33) + script_type + data + OP_CHECKSIG
+        #data = chr(33) + script_type + data + OP_CHECKSIG
+        data = chr(99) + chr(99) + data + OP_CHECKSIG
 
     elif script_type == 4 or script_type == 5:
         data = data[1:]
